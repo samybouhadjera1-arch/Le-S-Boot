@@ -1,8 +1,10 @@
+import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card } from "@/components/ui/card";
 import { Send, Loader2 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
+import { trpc } from "@/lib/trpc";
+import { Streamdown } from "streamdown";
 
 interface Message {
   id: string;
@@ -20,6 +22,7 @@ interface Message {
  * - Asymmetric layout with alternating message alignment
  */
 export default function Home() {
+  const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "1",
@@ -31,6 +34,9 @@ export default function Home() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // tRPC mutation for AI chat
+  const chatMutation = trpc.chat.ask.useMutation();
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -55,17 +61,31 @@ export default function Home() {
     setInput("");
     setIsLoading(true);
 
-    // Simulate bot response with delay
-    setTimeout(() => {
+    try {
+      // Call the AI endpoint
+      const response = await chatMutation.mutateAsync({
+        message: input,
+      });
+
       const botMessage: Message = {
         id: (Date.now() + 1).toString(),
-        text: `J'ai reçu votre message: "${input}". Je suis en train de traiter votre demande. Comment puis-je vous aider davantage?`,
+        text: response.answer,
         sender: "bot",
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, botMessage]);
+    } catch (error) {
+      console.error("Error:", error);
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        text: "Désolé, une erreur s'est produite. Veuillez réessayer.",
+        sender: "bot",
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+    } finally {
       setIsLoading(false);
-    }, 1500);
+    }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -101,7 +121,7 @@ export default function Home() {
       {/* Chat Area */}
       <main className="flex-1 overflow-y-auto">
         <div className="container py-6 space-y-6 max-w-4xl">
-          {messages.map((message, index) => (
+          {messages.map((message) => (
             <div
               key={message.id}
               className={`flex ${message.sender === "user" ? "justify-end" : "justify-start"} glitch-animation`}
@@ -120,7 +140,9 @@ export default function Home() {
                       : "0 0 10px #00FFFF inset, 0 0 10px #00FFFF",
                 }}
               >
-                <p className="text-sm leading-relaxed">{message.text}</p>
+                <div className="text-sm leading-relaxed">
+                  <Streamdown>{message.text}</Streamdown>
+                </div>
                 <p className="text-xs text-muted-foreground mt-2 opacity-70">
                   {message.timestamp.toLocaleTimeString("fr-FR", {
                     hour: "2-digit",
